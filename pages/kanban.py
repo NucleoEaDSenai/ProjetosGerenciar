@@ -5,180 +5,181 @@ from models import Task, Project
 
 
 def show():
-    st.markdown("## 🗂️ Kanban Board")
-    st.markdown("---")
+    st.markdown("""
+    <div style="margin-bottom:1.2rem;">
+        <h1 style="font-size:1.8rem;font-weight:700;color:#e2f0ff;margin:0;letter-spacing:-0.5px;">🗂️ Kanban</h1>
+        <div style="font-size:0.82rem;color:#4a6a8a;margin-top:0.2rem;">Arraste tarefas entre colunas usando os botões de movimento</div>
+    </div>
+    """, unsafe_allow_html=True)
 
     db = get_db()
     try:
-        # Project filter
-        projects = db.query(Project).all()
-        proj_opts = ["Todos os Projetos"] + [p.nome for p in projects]
+        projects = db.query(Project).order_by(Project.nome).all()
+        proj_opts = ["Todos os Projetos"] + [p.nome[:60] + ("..." if len(p.nome) > 60 else "") for p in projects]
+        proj_map = {(p.nome[:60] + ("..." if len(p.nome) > 60 else "")): p.id for p in projects}
 
-        col1, col2 = st.columns([2, 3])
-        with col1:
-            selected_proj = st.selectbox("📁 Filtrar por Projeto", proj_opts)
+        col_f1, col_f2 = st.columns([2, 2])
+        with col_f1:
+            sel_proj = st.selectbox("📁 Projeto", proj_opts, label_visibility="collapsed")
+        with col_f2:
+            sel_resp = st.text_input("🔍 Filtrar por responsável", placeholder="Nome do responsável...", label_visibility="collapsed")
 
         query = db.query(Task)
-        if selected_proj != "Todos os Projetos":
-            proj = db.query(Project).filter(Project.nome == selected_proj).first()
-            if proj:
-                query = query.filter(Task.projeto_id == proj.id)
+        if sel_proj != "Todos os Projetos":
+            pid = proj_map.get(sel_proj)
+            if pid:
+                query = query.filter(Task.projeto_id == pid)
+        if sel_resp:
+            from models import User
+            users = db.query(User).filter(User.nome.ilike(f"%{sel_resp}%")).all()
+            uids = [u.id for u in users]
+            if uids:
+                query = query.filter(Task.responsavel_id.in_(uids))
 
         all_tasks = query.all()
 
-        a_fazer = [t for t in all_tasks if t.status == "A Fazer"]
+        a_fazer     = [t for t in all_tasks if t.status == "A Fazer"]
         em_andamento = [t for t in all_tasks if t.status == "Em Andamento"]
-        concluido = [t for t in all_tasks if t.status == "Concluído"]
+        concluido   = [t for t in all_tasks if t.status == "Concluído"]
 
-        # Summary
+        # Stats
         c1, c2, c3 = st.columns(3)
         with c1:
-            st.metric("📝 A Fazer", len(a_fazer))
+            st.markdown(f"""
+            <div style="background:#1f1a08;border:1.5px solid #6a4a0888;border-radius:12px;
+                padding:0.8rem 1.1rem;text-align:center;margin-bottom:1rem;">
+                <div style="font-size:1.6rem;font-weight:700;color:#f59e0b;">{len(a_fazer)}</div>
+                <div style="font-size:0.72rem;color:#6a4a08;font-weight:600;text-transform:uppercase;">A Fazer</div>
+            </div>
+            """, unsafe_allow_html=True)
         with c2:
-            st.metric("⚙️ Em Andamento", len(em_andamento))
+            st.markdown(f"""
+            <div style="background:#0d2137;border:1.5px solid #1d5a8a88;border-radius:12px;
+                padding:0.8rem 1.1rem;text-align:center;margin-bottom:1rem;">
+                <div style="font-size:1.6rem;font-weight:700;color:#3b9eff;">{len(em_andamento)}</div>
+                <div style="font-size:0.72rem;color:#1d4a8a;font-weight:600;text-transform:uppercase;">Em Andamento</div>
+            </div>
+            """, unsafe_allow_html=True)
         with c3:
-            st.metric("✅ Concluído", len(concluido))
+            st.markdown(f"""
+            <div style="background:#0d2118;border:1.5px solid #1a604088;border-radius:12px;
+                padding:0.8rem 1.1rem;text-align:center;margin-bottom:1rem;">
+                <div style="font-size:1.6rem;font-weight:700;color:#10b981;">{len(concluido)}</div>
+                <div style="font-size:0.72rem;color:#1a4a30;font-weight:600;text-transform:uppercase;">Concluído</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-        st.markdown("---")
-
-        # Kanban CSS
-        st.markdown("""
-        <style>
-        .kanban-col-header {
-            font-weight: 700;
-            font-size: 1rem;
-            padding: 0.6rem 1rem;
-            border-radius: 8px;
-            text-align: center;
-            margin-bottom: 1rem;
-        }
-        .kanban-afazer { background: #fef3c7; color: #92400e; }
-        .kanban-andamento { background: #e0e7ff; color: #3730a3; }
-        .kanban-concluido { background: #d1fae5; color: #065f46; }
-
-        .kanban-card {
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            padding: 0.85rem 1rem;
-            margin-bottom: 0.75rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-            border-left: 4px solid #6366f1;
-            transition: box-shadow 0.2s;
-        }
-        .kanban-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
-        .kanban-card-critica { border-left-color: #ef4444; }
-        .kanban-card-alta { border-left-color: #f97316; }
-        .kanban-card-media { border-left-color: #6366f1; }
-        .kanban-card-baixa { border-left-color: #10b981; }
-        .kanban-card-done { border-left-color: #10b981; opacity: 0.75; }
-
-        .card-title { font-weight: 600; font-size: 0.9rem; color: #1e293b; margin-bottom: 0.3rem; }
-        .card-project { font-size: 0.75rem; color: #6366f1; font-weight: 500; }
-        .card-meta { font-size: 0.75rem; color: #64748b; margin-top: 0.4rem; }
-        .card-badge {
-            display: inline-block;
-            padding: 0.15rem 0.5rem;
-            border-radius: 20px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            margin-right: 0.3rem;
-        }
-        .badge-critica { background: #fee2e2; color: #dc2626; }
-        .badge-alta { background: #ffedd5; color: #c2410c; }
-        .badge-media { background: #e0e7ff; color: #4338ca; }
-        .badge-baixa { background: #d1fae5; color: #065f46; }
-        .badge-atrasada { background: #fef2f2; color: #dc2626; }
-
-        .kanban-empty {
-            text-align: center;
-            color: #94a3b8;
-            padding: 2rem 1rem;
-            font-size: 0.9rem;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-
-        # Three columns
         col_a, col_b, col_c = st.columns(3)
 
+        _col_header(col_a, "📝 A Fazer", "#f59e0b", "#1f1a08", len(a_fazer))
+        _col_header(col_b, "⚙️ Em Andamento", "#3b9eff", "#0d2137", len(em_andamento))
+        _col_header(col_c, "✅ Concluído", "#10b981", "#0d2118", len(concluido))
+
+        now = datetime.now()
+
         with col_a:
-            st.markdown('<div class="kanban-col-header kanban-afazer">📝 A Fazer</div>', unsafe_allow_html=True)
             if not a_fazer:
-                st.markdown('<div class="kanban-empty">Nenhuma tarefa pendente 🎉</div>', unsafe_allow_html=True)
+                st.markdown('<div style="text-align:center;color:#2e4a20;padding:1.5rem;font-size:0.85rem;">Nenhuma tarefa pendente 🎉</div>', unsafe_allow_html=True)
             for t in a_fazer:
-                _render_card(t, db, col="afazer")
+                _kanban_card(t, db, now)
 
         with col_b:
-            st.markdown('<div class="kanban-col-header kanban-andamento">⚙️ Em Andamento</div>', unsafe_allow_html=True)
             if not em_andamento:
-                st.markdown('<div class="kanban-empty">Nenhuma tarefa em progresso</div>', unsafe_allow_html=True)
+                st.markdown('<div style="text-align:center;color:#1e3a5a;padding:1.5rem;font-size:0.85rem;">Nenhuma tarefa em andamento</div>', unsafe_allow_html=True)
             for t in em_andamento:
-                _render_card(t, db, col="andamento")
+                _kanban_card(t, db, now)
 
         with col_c:
-            st.markdown('<div class="kanban-col-header kanban-concluido">✅ Concluído</div>', unsafe_allow_html=True)
             if not concluido:
-                st.markdown('<div class="kanban-empty">Nenhuma tarefa concluída ainda</div>', unsafe_allow_html=True)
+                st.markdown('<div style="text-align:center;color:#1a3a25;padding:1.5rem;font-size:0.85rem;">Nenhuma tarefa concluída</div>', unsafe_allow_html=True)
             for t in concluido:
-                _render_card(t, db, col="concluido")
+                _kanban_card(t, db, now)
 
     finally:
         db.close()
 
 
-def _render_card(t: Task, db, col: str):
-    now = datetime.now()
-    is_late = t.prazo and t.prazo < now and t.status != "Concluído"
-    is_done = t.status == "Concluído"
-
-    prior_class = {
-        "Crítica": "critica", "Alta": "alta", "Média": "media", "Baixa": "baixa"
-    }.get(t.prioridade, "media")
-
-    card_class = "kanban-card-done" if is_done else f"kanban-card-{prior_class}"
-    prior_badge = f'<span class="card-badge badge-{prior_class}">{t.prioridade}</span>'
-    late_badge = '<span class="card-badge badge-atrasada">⚠️ Atrasada</span>' if is_late else ""
-
-    prazo_str = ""
-    if t.prazo:
-        prazo_str = f"📅 {t.prazo.strftime('%d/%m/%Y')}"
-
-    resp_str = f"👤 {t.responsavel_user.nome}" if t.responsavel_user else ""
-    proj_str = f'<div class="card-project">📁 {t.projeto.nome}</div>' if t.projeto else ""
-
-    card_html = f"""
-    <div class="kanban-card {card_class}">
-        {proj_str}
-        <div class="card-title">{'~~' if is_done else ''}{t.titulo}{'~~' if is_done else ''}</div>
-        <div class="card-meta">
-            {prior_badge}{late_badge}
+def _col_header(col, title, color, bg, count):
+    with col:
+        st.markdown(f"""
+        <div style="background:{bg};border:1px solid {color}33;border-top:3px solid {color};
+            border-radius:8px 8px 0 0;padding:0.6rem 1rem;margin-bottom:0.5rem;
+            display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-weight:700;font-size:0.88rem;color:{color};">{title}</span>
+            <span style="background:{color}22;color:{color};border-radius:12px;
+                padding:0.1rem 0.55rem;font-size:0.72rem;font-weight:600;">{count}</span>
         </div>
-        <div class="card-meta">{resp_str} &nbsp; {prazo_str}</div>
+        """, unsafe_allow_html=True)
+
+
+def _kanban_card(t, db, now):
+    is_done = t.status == "Concluído"
+    is_late = t.prazo and t.prazo < now and not is_done
+
+    PRIO_COLORS = {"Crítica": "#ff4444", "Alta": "#ff8c42", "Média": "#fbbf24", "Baixa": "#60b8ff"}
+    prio_col = PRIO_COLORS.get(t.prioridade, "#fbbf24")
+
+    border_l = {"Crítica": "#ff4444", "Alta": "#ff8c42", "Média": "#f59e0b", "Baixa": "#3b9eff"}.get(t.prioridade, "#f59e0b")
+    if is_done:
+        border_l = "#10b981"
+    if is_late:
+        border_l = "#ff4444"
+
+    prazo_str = t.prazo.strftime("%d/%m/%Y") if t.prazo else "—"
+    dias_atraso = (now - t.prazo).days if is_late else 0
+    resp_nome = t.responsavel_user.nome.split()[0] if t.responsavel_user else "—"
+    proj_nome = (t.projeto.nome[:35] + "..." if t.projeto and len(t.projeto.nome) > 35 else (t.projeto.nome if t.projeto else "")) if t.projeto else ""
+
+    titulo_style = "text-decoration:line-through;opacity:0.6;" if is_done else ""
+    late_badge = f'<span style="color:#ff4444;font-size:0.65rem;font-weight:700;">⚠ {dias_atraso}d</span>' if is_late else ""
+    card_bg = "#0d2118" if is_done else "#161b27"
+
+    st.markdown(f"""
+    <div style="background:{card_bg};border:1px solid #1e2d45;border-left:3px solid {border_l};
+        border-radius:8px;padding:0.7rem 0.9rem;margin-bottom:0.4rem;">
+        {f'<div style="font-size:0.65rem;color:#2e4a6a;margin-bottom:0.25rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📁 {proj_nome}</div>' if proj_nome else ''}
+        <div style="font-size:0.83rem;font-weight:600;color:#c8d6f0;line-height:1.3;margin-bottom:0.4rem;{titulo_style}">
+            {t.titulo[:80] + ('...' if len(t.titulo) > 80 else '')}
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+                <span style="background:{prio_col}22;color:{prio_col};border-radius:4px;
+                    padding:0.08rem 0.4rem;font-size:0.63rem;font-weight:600;">{t.prioridade}</span>
+                {late_badge}
+            </div>
+            <div style="font-size:0.65rem;color:#3a5a7a;">👤 {resp_nome}</div>
+        </div>
+        <div style="font-size:0.65rem;color:{'#ff6b6b' if is_late else '#2e4a6a'};margin-top:0.3rem;">
+            📅 {prazo_str}
+        </div>
     </div>
-    """
-    st.markdown(card_html, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-    # Quick move buttons
-    with st.container():
-        status_opts = ["A Fazer", "Em Andamento", "Concluído"]
-        current_idx = status_opts.index(t.status) if t.status in status_opts else 0
+    # Move buttons
+    opts = ["A Fazer", "Em Andamento", "Concluído"]
+    idx = opts.index(t.status) if t.status in opts else 0
+    btn_cols = []
+    if idx > 0:
+        btn_cols.append(("←", opts[idx - 1]))
+    if idx < 2:
+        btn_cols.append(("→", opts[idx + 1]))
 
-        cols = []
-        if current_idx > 0:
-            cols.append(("⬅️", status_opts[current_idx - 1]))
-        if current_idx < len(status_opts) - 1:
-            cols.append(("➡️", status_opts[current_idx + 1]))
+    if btn_cols:
+        b_cols = st.columns(len(btn_cols) + 1)
+        for i, (arrow, new_status) in enumerate(btn_cols):
+            label = f"{arrow} {new_status.split()[0]}"
+            with b_cols[i]:
+                if st.button(label, key=f"kb_{t.id}_{new_status}", use_container_width=True):
+                    t.status = new_status
+                    t.atualizado_em = datetime.now()
+                    # Update project progress
+                    if t.projeto:
+                        proj = t.projeto
+                        n_done = sum(1 for x in proj.tarefas if
+                                     (x.id == t.id and new_status == "Concluído") or
+                                     (x.id != t.id and x.status == "Concluído"))
+                        proj.progresso = (n_done / len(proj.tarefas) * 100) if proj.tarefas else 0
+                    db.commit()
+                    st.rerun()
 
-        if cols:
-            btn_cols = st.columns(len(cols) + 1)
-            for idx, (arrow, new_status) in enumerate(cols):
-                with btn_cols[idx]:
-                    label = f"{arrow} {new_status.split()[0]}"
-                    if st.button(label, key=f"kanban_{t.id}_{new_status}", use_container_width=True):
-                        t.status = new_status
-                        t.atualizado_em = datetime.now()
-                        db.commit()
-                        st.rerun()
-
-    st.markdown('<div style="margin-bottom:0.25rem"></div>', unsafe_allow_html=True)
+    st.markdown("<div style='height:0.1rem'></div>", unsafe_allow_html=True)

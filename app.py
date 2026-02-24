@@ -1,245 +1,211 @@
 import streamlit as st
-import sys
-import os
-
-# Add project root to path
+import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 
 from database import init_db
 from auth import login_page, logout, require_auth
 
-# ── Page config ─────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="ProjectFlow",
-    page_icon="🚀",
+    page_title="Petrobras / Senai EaD",
+    page_icon="🛢️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ── Global CSS ───────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* ---------- Base ---------- */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap');
 
-html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
-}
+*, html, body { font-family: 'Sora', sans-serif !important; }
 
-/* Remove default streamlit header margin */
-.block-container { padding-top: 1.5rem; }
+/* ── Page background ── */
+.stApp { background: #0f1117 !important; }
+.block-container { padding-top: 1.2rem !important; padding-bottom: 2rem !important; }
 
-/* ---------- Sidebar ---------- */
+/* ── Sidebar ── */
 [data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #1e1b4b 0%, #312e81 100%);
+    background: #161b27 !important;
+    border-right: 1px solid #1e2740;
 }
-[data-testid="stSidebar"] * { color: #e0e7ff !important; }
+[data-testid="stSidebar"] * { color: #c8d6f0 !important; }
+[data-testid="stSidebarContent"] { padding: 0 !important; }
 
-.sidebar-logo {
-    text-align: center;
-    padding: 1.5rem 0 1rem;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
-    margin-bottom: 1rem;
-}
-.sidebar-logo .logo-icon { font-size: 2.5rem; }
-.sidebar-logo .logo-text {
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: white !important;
-    margin-top: 0.25rem;
-    letter-spacing: -0.5px;
-}
-.sidebar-logo .logo-sub {
-    font-size: 0.75rem;
-    color: #a5b4fc !important;
-    margin-top: 0.1rem;
-}
-
-.user-badge {
-    background: rgba(255,255,255,0.1);
-    border-radius: 10px;
-    padding: 0.75rem 1rem;
-    margin: 0.5rem 0 1rem;
-    border: 1px solid rgba(255,255,255,0.15);
-}
-.user-badge .ub-name { font-weight: 600; font-size: 0.9rem; color: white !important; }
-.user-badge .ub-role {
-    font-size: 0.72rem;
-    color: #a5b4fc !important;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-top: 0.2rem;
-}
-
-.nav-section {
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: #818cf8 !important;
-    padding: 0.75rem 0 0.3rem;
-    font-weight: 600;
-}
-
-/* ---------- Radio nav buttons ---------- */
-[data-testid="stSidebar"] .stRadio > div {
-    flex-direction: column;
-    gap: 0.2rem;
-}
-[data-testid="stSidebar"] .stRadio label {
-    display: block;
-    padding: 0.6rem 1rem;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background 0.15s;
-    font-size: 0.9rem;
-    font-weight: 500;
-}
-[data-testid="stSidebar"] .stRadio label:hover {
-    background: rgba(255,255,255,0.08);
-}
-[data-testid="stSidebar"] [data-baseweb="radio"] input:checked + div ~ div {
-    background: rgba(255,255,255,0.15);
-}
-
-/* ---------- Metrics ---------- */
-[data-testid="metric-container"] {
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 1rem 1.25rem !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-}
-[data-testid="metric-container"] [data-testid="stMetricValue"] {
-    font-size: 2rem;
-    font-weight: 700;
-    color: #1e293b;
-}
-[data-testid="metric-container"] [data-testid="stMetricLabel"] {
-    font-size: 0.85rem;
-    color: #64748b;
-    font-weight: 500;
-}
-
-/* ---------- Dataframe ---------- */
-[data-testid="stDataFrame"] {
-    border-radius: 10px;
-    overflow: hidden;
-    border: 1px solid #e2e8f0;
-}
-
-/* ---------- Expander ---------- */
-[data-testid="stExpander"] {
-    border: 1px solid #e2e8f0 !important;
-    border-radius: 10px !important;
-    background: white;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+/* Sidebar logo */
+.sb-logo {
+    padding: 1.4rem 1.2rem 1rem;
+    border-bottom: 1px solid #1e2740;
     margin-bottom: 0.5rem;
 }
+.sb-logo-top { font-size: 0.68rem; color: #4a7fa5 !important; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 0.3rem; }
+.sb-logo-title { font-size: 1.15rem; font-weight: 700; color: #e2f0ff !important; letter-spacing: -0.3px; }
+.sb-logo-sub { font-size: 0.7rem; color: #4a6a8a !important; margin-top: 0.15rem; }
 
-/* ---------- Buttons ---------- */
+/* User chip */
+.sb-user {
+    margin: 0.6rem 1rem 0.8rem;
+    background: #1a2236;
+    border: 1px solid #243050;
+    border-radius: 10px;
+    padding: 0.65rem 0.9rem;
+    display: flex; align-items: center; gap: 0.6rem;
+}
+.sb-avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem; font-weight: 700; flex-shrink: 0;
+    color: #fff !important;
+}
+.sb-uname { font-size: 0.82rem; font-weight: 600; color: #ddeeff !important; }
+.sb-urole { font-size: 0.68rem; color: #5a7a9a !important; text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* Nav label */
+.sb-nav-label {
+    font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.15em;
+    color: #2e4a6a !important; padding: 0.8rem 1.2rem 0.3rem; font-weight: 600;
+}
+
+/* Radio nav */
+[data-testid="stSidebar"] .stRadio > label { display: none !important; }
+[data-testid="stSidebar"] .stRadio > div { flex-direction: column !important; gap: 0.1rem !important; padding: 0 0.7rem; }
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
+    display: flex !important; align-items: center !important;
+    padding: 0.6rem 0.9rem !important; border-radius: 8px !important;
+    font-size: 0.88rem !important; font-weight: 500 !important;
+    cursor: pointer !important; transition: background 0.12s !important;
+    color: #8aabcc !important;
+}
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:hover {
+    background: #1a2a3d !important; color: #c8e0f8 !important;
+}
+[data-testid="stSidebar"] [data-baseweb="radio"] input:checked ~ * { color: #60a5fa !important; }
+
+/* ── Metrics ── */
+[data-testid="metric-container"] {
+    border-radius: 12px !important; padding: 1.1rem 1.3rem !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3) !important;
+    border: 1px solid !important;
+}
+[data-testid="stMetricValue"] { font-size: 2.2rem !important; font-weight: 700 !important; }
+[data-testid="stMetricLabel"] { font-size: 0.8rem !important; font-weight: 500 !important; opacity: 0.85; }
+[data-testid="stMetricDelta"] { font-size: 0.78rem !important; }
+
+/* ── Buttons ── */
+.stButton > button {
+    border-radius: 8px !important; font-weight: 600 !important;
+    transition: all 0.15s !important; border: none !important;
+}
 .stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    border: none;
-    border-radius: 8px;
-    font-weight: 600;
-    transition: all 0.2s;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+    color: white !important;
 }
 .stButton > button[kind="primary"]:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 15px rgba(99,102,241,0.4);
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 20px rgba(37,99,235,0.45) !important;
+}
+.stButton > button[kind="secondary"] {
+    background: #1a2236 !important; color: #8aabcc !important;
+    border: 1px solid #2a3a54 !important;
 }
 
-/* ---------- Tabs ---------- */
-.stTabs [data-baseweb="tab-list"] {
-    border-bottom: 2px solid #e2e8f0;
-    gap: 0;
+/* ── Expander ── */
+[data-testid="stExpander"] {
+    background: #161b27 !important;
+    border: 1px solid #1e2d45 !important;
+    border-radius: 12px !important;
+    margin-bottom: 0.5rem !important;
 }
-.stTabs [data-baseweb="tab"] {
-    font-weight: 500;
-    color: #64748b;
-    border-radius: 8px 8px 0 0;
-}
-.stTabs [aria-selected="true"] {
-    color: #6366f1 !important;
-    border-bottom: 2px solid #6366f1 !important;
+[data-testid="stExpander"] summary { color: #c8d6f0 !important; font-weight: 600 !important; }
+
+/* ── Selectbox / text input ── */
+[data-testid="stSelectbox"], [data-testid="stTextInput"], .stTextArea textarea {
+    background: #1a2236 !important; color: #c8d6f0 !important;
+    border: 1px solid #2a3a54 !important; border-radius: 8px !important;
 }
 
-/* ---------- Forms ---------- */
+/* ── Form ── */
 [data-testid="stForm"] {
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 1.5rem;
+    background: #161b27 !important; border: 1px solid #1e2d45 !important;
+    border-radius: 14px !important; padding: 1.5rem !important;
 }
 
-/* ---------- Divider ---------- */
-hr { border-color: #f1f5f9; }
+/* ── Dividers ── */
+hr { border-color: #1e2740 !important; }
 
-/* Hide streamlit branding */
-#MainMenu, footer { visibility: hidden; }
+/* ── Tabs ── */
+.stTabs [data-baseweb="tab-list"] { background: transparent !important; border-bottom: 2px solid #1e2d45 !important; }
+.stTabs [data-baseweb="tab"] { color: #5a7a9a !important; font-weight: 600 !important; }
+.stTabs [aria-selected="true"] { color: #60a5fa !important; border-bottom: 2px solid #60a5fa !important; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0f1117; }
+::-webkit-scrollbar-thumb { background: #2a3a54; border-radius: 3px; }
+
+/* ── Hide branding ── */
+#MainMenu, footer, [data-testid="stToolbar"] { visibility: hidden !important; }
+
+/* ── General text ── */
+h1,h2,h3,h4,h5,p,span,div,label { color: #c8d6f0; }
+.stMarkdown p { color: #a0b8d0; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Initialize DB ─────────────────────────────────────────────────────────────
 init_db()
 
-# ── Auth check ────────────────────────────────────────────────────────────────
 if not require_auth():
     login_page()
     st.stop()
 
-# ── Sidebar navigation ────────────────────────────────────────────────────────
+# ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
-    <div class="sidebar-logo">
-        <div class="logo-icon">🚀</div>
-        <div class="logo-text">ProjectFlow</div>
-        <div class="logo-sub">Gerenciamento de Projetos</div>
+    <div class="sb-logo">
+        <div class="sb-logo-top">🛢️ Petrobras</div>
+        <div class="sb-logo-title">Senai EaD</div>
+        <div class="sb-logo-sub">Plataforma de Gestão de Projetos</div>
     </div>
     """, unsafe_allow_html=True)
 
-    role_icons = {"admin": "👑", "gestor": "🎯", "colaborador": "👤"}
-    role_icon = role_icons.get(st.session_state.get("user_role", "colaborador"), "👤")
+    role = st.session_state.get("user_role", "colaborador")
+    nome = st.session_state.get("user_nome", "Usuário")
+    color = st.session_state.get("user_color", "#2563eb")
+    initials = "".join(p[0].upper() for p in nome.split()[:2])
+    role_label = {"admin": "Administrador", "gestor": "Gestor", "colaborador": "Colaborador"}.get(role, role)
 
     st.markdown(f"""
-    <div class="user-badge">
-        <div class="ub-name">{role_icon} {st.session_state.get("user_nome", "Usuário")}</div>
-        <div class="ub-role">{st.session_state.get("user_role", "colaborador")}</div>
+    <div class="sb-user">
+        <div class="sb-avatar" style="background:{color}">{initials}</div>
+        <div>
+            <div class="sb-uname">{nome}</div>
+            <div class="sb-urole">{role_label}</div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="nav-section">Navegação</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sb-nav-label">Menu</div>', unsafe_allow_html=True)
 
-    page = st.radio(
-        "nav",
-        ["📊 Dashboard", "📁 Projetos", "✅ Tarefas", "🗂️ Kanban"],
-        label_visibility="collapsed"
-    )
+    page = st.radio("nav", [
+        "📊  Dashboard",
+        "📋  Projetos",
+        "🗂️  Kanban",
+    ], label_visibility="collapsed")
 
     st.markdown("---")
-    st.markdown('<div class="nav-section">Conta</div>', unsafe_allow_html=True)
-
-    if st.button("🚪 Sair", use_container_width=True):
+    st.markdown('<div class="sb-nav-label">Conta</div>', unsafe_allow_html=True)
+    if st.button("⬡  Sair", use_container_width=True):
         logout()
 
-    st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("""
-    <div style="text-align:center; font-size:0.7rem; color:#818cf8; padding-top:1rem;">
-        ProjectFlow v1.0<br>
-        <span style="opacity:0.6">Powered by Streamlit</span>
+    <div style="text-align:center;padding:1.5rem 0 0.5rem;font-size:0.65rem;color:#2e4a6a;">
+        Petrobras / Senai EaD v2.0<br>
+        <span style="opacity:0.5">Powered by Streamlit</span>
     </div>
     """, unsafe_allow_html=True)
 
-# ── Page routing ──────────────────────────────────────────────────────────────
-if page == "📊 Dashboard":
-    from pages import dashboard
-    dashboard.show()
-elif page == "📁 Projetos":
-    from pages import projetos
-    projetos.show()
-elif page == "✅ Tarefas":
-    from pages import tarefas
-    tarefas.show()
-elif page == "🗂️ Kanban":
-    from pages import kanban
-    kanban.show()
+# ── Routing ───────────────────────────────────────────────────────────────────
+if "📊" in page:
+    from pages import dashboard; dashboard.show()
+elif "📋" in page:
+    from pages import projetos; projetos.show()
+elif "🗂️" in page:
+    from pages import kanban; kanban.show()

@@ -1,156 +1,237 @@
 import streamlit as st
-import plotly.express as px
 import plotly.graph_objects as go
+import plotly.express as px
 import pandas as pd
 from datetime import datetime
 from database import get_db
 from models import Project, Task, User
 
 
-def show():
-    st.markdown("## 📊 Dashboard")
-    st.markdown("---")
+STATUS_COLORS = {
+    "Ativo":        {"bg": "#0d2137", "border": "#1d6fa4", "text": "#60b8ff", "dot": "#3b9eff"},
+    "Concluído":    {"bg": "#0d2118", "border": "#1d7a4a", "text": "#34d399", "dot": "#10b981"},
+    "Planejamento": {"bg": "#1f1a08", "border": "#7a5a10", "text": "#fbbf24", "dot": "#f59e0b"},
+    "Cancelado":    {"bg": "#1f0d0d", "border": "#7a2020", "text": "#f87171", "dot": "#ef4444"},
+    "Pausado":      {"bg": "#151520", "border": "#3a3a5a", "text": "#94a3b8", "dot": "#64748b"},
+}
 
+
+def show():
     db = get_db()
     try:
         now = datetime.now()
+        all_projects = db.query(Project).all()
 
-        # KPIs
-        total_projetos = db.query(Project).count()
-        projetos_ativos = db.query(Project).filter(Project.status == "Ativo").count()
-        tarefas_pendentes = db.query(Task).filter(Task.status != "Concluído").count()
-        tarefas_atrasadas = db.query(Task).filter(
-            Task.prazo < now, Task.status != "Concluído"
-        ).count()
-        tarefas_concluidas = db.query(Task).filter(Task.status == "Concluído").count()
-        total_tarefas = db.query(Task).count()
+        total = len(all_projects)
+        ativos     = sum(1 for p in all_projects if p.status == "Ativo")
+        concluidos = sum(1 for p in all_projects if p.status == "Concluído")
+        planej     = sum(1 for p in all_projects if p.status == "Planejamento")
+        cancelados = sum(1 for p in all_projects if p.status == "Cancelado")
 
-        # Metrics row
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            st.metric("📁 Total de Projetos", total_projetos, delta=None)
-        with c2:
-            st.metric("🟢 Projetos Ativos", projetos_ativos,
-                      delta=f"{projetos_ativos}/{total_projetos} ativos")
-        with c3:
-            st.metric("⏳ Tarefas Pendentes", tarefas_pendentes,
-                      delta=f"{tarefas_concluidas} concluídas")
-        with c4:
-            st.metric("🔴 Tarefas Atrasadas", tarefas_atrasadas,
-                      delta=f"{'⚠️ Atenção!' if tarefas_atrasadas > 0 else '✅ Em dia'}",
-                      delta_color="inverse")
+        # Projetos com tarefas atrasadas
+        proj_atrasados = []
+        for p in all_projects:
+            if p.status == "Concluído":
+                continue
+            tasks_atrasadas = [
+                t for t in p.tarefas
+                if t.prazo and t.prazo < now and t.status != "Concluído"
+            ]
+            if tasks_atrasadas:
+                max_atraso = max((now - t.prazo).days for t in tasks_atrasadas)
+                proj_atrasados.append((p, len(tasks_atrasadas), max_atraso))
 
-        st.markdown("<br>", unsafe_allow_html=True)
+        n_atrasados = len(proj_atrasados)
 
-        col_left, col_right = st.columns([3, 2])
+        # ── Header ─────────────────────────────────────────────────────────────
+        st.markdown("""
+        <div style="margin-bottom:1.5rem;">
+            <div style="font-size:0.72rem;color:#4a7fa5;text-transform:uppercase;letter-spacing:0.12em;font-weight:600;">Petrobras / Senai EaD</div>
+            <h1 style="font-size:1.8rem;font-weight:700;color:#e2f0ff;margin:0.2rem 0 0.3rem;letter-spacing:-0.5px;">Dashboard</h1>
+            <div style="font-size:0.82rem;color:#4a6a8a;">Visão geral · Atualizado em {}</div>
+        </div>
+        """.format(now.strftime("%d/%m/%Y %H:%M")), unsafe_allow_html=True)
 
-        with col_left:
-            # Projects progress chart
-            st.markdown("### 📈 Progresso dos Projetos")
-            projects = db.query(Project).all()
-            if projects:
-                df_proj = pd.DataFrame([{
-                    "Projeto": p.nome[:30] + "..." if len(p.nome) > 30 else p.nome,
-                    "Progresso": p.progresso,
-                    "Status": p.status
-                } for p in projects])
+        # ── KPI Cards ──────────────────────────────────────────────────────────
+        c1, c2, c3, c4, c5 = st.columns(5)
+        _kpi_card(c1, str(total),      "Total de Projetos",  "#2a4a7a", "#3b82f6", "📁")
+        _kpi_card(c2, str(ativos),     "Ativos",             "#0d2137", "#3b9eff", "🟢")
+        _kpi_card(c3, str(concluidos), "Concluídos",         "#0d2118", "#10b981", "✅")
+        _kpi_card(c4, str(planej),     "Planejamento",       "#1f1a08", "#f59e0b", "🟡")
 
-                color_map = {
-                    "Ativo": "#6366f1",
-                    "Concluído": "#10b981",
-                    "Planejamento": "#f59e0b",
-                    "Pausado": "#64748b",
-                    "Cancelado": "#ef4444"
-                }
+        # Card de atrasados com destaque vermelho
+        with c5:
+            bg = "#2d0d0d" if n_atrasados > 0 else "#151520"
+            border = "#aa2020" if n_atrasados > 0 else "#2a3a54"
+            txt_col = "#ff6b6b" if n_atrasados > 0 else "#94a3b8"
+            icon = "🔴" if n_atrasados > 0 else "✅"
+            st.markdown(f"""
+            <div style="background:{bg};border:1.5px solid {border};border-radius:14px;
+                padding:1.1rem 1.2rem;min-height:90px;">
+                <div style="font-size:0.75rem;color:{txt_col};font-weight:600;margin-bottom:0.4rem;">{icon} Com Atraso</div>
+                <div style="font-size:2.2rem;font-weight:700;color:{txt_col};line-height:1;">{n_atrasados}</div>
+                <div style="font-size:0.7rem;color:#5a3a3a;margin-top:0.3rem;">
+                    {"projetos com tarefas vencidas" if n_atrasados > 0 else "tudo em dia 🎉"}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
-                fig = px.bar(
-                    df_proj, x="Progresso", y="Projeto",
-                    orientation="h",
-                    color="Status",
-                    color_discrete_map=color_map,
-                    range_x=[0, 100],
-                    text="Progresso"
-                )
-                fig.update_traces(texttemplate="%{text:.0f}%", textposition="outside")
-                fig.update_layout(
-                    height=300,
-                    margin=dict(l=0, r=20, t=10, b=0),
-                    showlegend=True,
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    font=dict(size=12),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                )
-                fig.update_xaxes(showgrid=True, gridcolor="#f1f5f9", title="")
-                fig.update_yaxes(title="")
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Nenhum projeto cadastrado ainda.")
+        st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
 
-        with col_right:
-            # Tasks status donut
-            st.markdown("### 🍩 Status das Tarefas")
-            if total_tarefas > 0:
-                a_fazer = db.query(Task).filter(Task.status == "A Fazer").count()
-                em_andamento = db.query(Task).filter(Task.status == "Em Andamento").count()
+        # ── Charts row ─────────────────────────────────────────────────────────
+        col_l, col_r = st.columns([3, 2])
 
-                labels = ["A Fazer", "Em Andamento", "Concluído"]
-                values = [a_fazer, em_andamento, tarefas_concluidas]
-                colors = ["#f59e0b", "#6366f1", "#10b981"]
+        with col_l:
+            _section_header("📊 Distribuição por Status")
+            # Bar chart — projects grouped by status
+            status_data = {}
+            for p in all_projects:
+                status_data[p.status] = status_data.get(p.status, 0) + 1
 
+            colors_bar = {
+                "Ativo": "#3b9eff", "Concluído": "#10b981",
+                "Planejamento": "#f59e0b", "Cancelado": "#ef4444", "Pausado": "#64748b"
+            }
+            df_bar = pd.DataFrame([
+                {"Status": k, "Projetos": v, "Cor": colors_bar.get(k, "#6366f1")}
+                for k, v in status_data.items()
+            ])
+            fig = px.bar(df_bar, x="Status", y="Projetos", color="Status",
+                         color_discrete_map=colors_bar, text="Projetos")
+            fig.update_traces(textposition="outside", textfont=dict(color="#c8d6f0", size=13))
+            fig.update_layout(
+                height=260, showlegend=False,
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=0, r=0, t=10, b=0),
+                font=dict(color="#8aabcc", size=12),
+                xaxis=dict(gridcolor="#1e2d45", linecolor="#1e2d45"),
+                yaxis=dict(gridcolor="#1e2d45", linecolor="#1e2d45"),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col_r:
+            _section_header("🍩 Progresso Geral")
+            # Donut — tasks status
+            all_tasks = db.query(Task).all()
+            a_fazer = sum(1 for t in all_tasks if t.status == "A Fazer")
+            em_and  = sum(1 for t in all_tasks if t.status == "Em Andamento")
+            conc    = sum(1 for t in all_tasks if t.status == "Concluído")
+            total_t = a_fazer + em_and + conc
+
+            if total_t > 0:
                 fig2 = go.Figure(data=[go.Pie(
-                    labels=labels, values=values,
-                    hole=0.55,
-                    marker=dict(colors=colors, line=dict(color="#fff", width=2)),
-                    textinfo="label+percent",
-                    textfont=dict(size=11)
+                    labels=["A Fazer", "Em Andamento", "Concluído"],
+                    values=[a_fazer, em_and, conc],
+                    hole=0.6,
+                    marker=dict(
+                        colors=["#f59e0b", "#3b9eff", "#10b981"],
+                        line=dict(color="#0f1117", width=3)
+                    ),
+                    textinfo="percent",
+                    textfont=dict(size=12, color="#c8d6f0"),
                 )])
+                pct_conc = int(conc / total_t * 100) if total_t else 0
+                fig2.add_annotation(
+                    text=f"<b>{pct_conc}%</b><br><span style='font-size:10px'>concluído</span>",
+                    x=0.5, y=0.5, showarrow=False,
+                    font=dict(size=18, color="#c8d6f0"), align="center"
+                )
                 fig2.update_layout(
-                    height=300,
-                    margin=dict(l=0, r=0, t=10, b=0),
-                    showlegend=False,
-                    paper_bgcolor="rgba(0,0,0,0)"
+                    height=260, showlegend=True,
+                    legend=dict(orientation="h", x=0, y=-0.1, font=dict(color="#8aabcc", size=11)),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    margin=dict(l=0, r=0, t=10, b=30),
                 )
                 st.plotly_chart(fig2, use_container_width=True)
-            else:
-                st.info("Nenhuma tarefa cadastrada.")
 
-        # Overdue tasks
-        if tarefas_atrasadas > 0:
-            st.markdown("### 🔴 Tarefas em Atraso")
-            atrasadas = db.query(Task).filter(
-                Task.prazo < now, Task.status != "Concluído"
-            ).all()
+        # ── Projetos atrasados ──────────────────────────────────────────────────
+        if proj_atrasados:
+            st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+            _section_header("🔴 Projetos com Tarefas Atrasadas")
 
-            data = []
-            for t in atrasadas:
-                dias = (now - t.prazo).days
-                data.append({
-                    "📌 Tarefa": t.titulo,
-                    "📁 Projeto": t.projeto.nome if t.projeto else "-",
-                    "👤 Responsável": t.responsavel_user.nome if t.responsavel_user else "-",
-                    "📅 Prazo": t.prazo.strftime("%d/%m/%Y"),
-                    "⏰ Atraso": f"{dias} dia(s)",
-                    "🎯 Prioridade": t.prioridade,
-                })
-            st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
+            proj_atrasados_sorted = sorted(proj_atrasados, key=lambda x: x[2], reverse=True)
+            for p, n_tasks, max_dias in proj_atrasados_sorted[:15]:
+                resp_nome = p.responsavel_user.nome if p.responsavel_user else "—"
+                # Urgency color
+                if max_dias > 30:
+                    urg_bg, urg_col = "#2d0808", "#ff4444"
+                elif max_dias > 7:
+                    urg_bg, urg_col = "#2a1508", "#ff8c42"
+                else:
+                    urg_bg, urg_col = "#1f1a08", "#fbbf24"
 
-        # Recent projects
-        st.markdown("### 🕐 Projetos Recentes")
-        projetos_recentes = db.query(Project).order_by(Project.criado_em.desc()).limit(5).all()
-        if projetos_recentes:
-            data_proj = []
-            for p in projetos_recentes:
-                status_icon = {"Ativo": "🟢", "Concluído": "✅", "Planejamento": "🟡",
-                               "Pausado": "⏸️", "Cancelado": "❌"}.get(p.status, "⚪")
-                data_proj.append({
-                    "📁 Projeto": p.nome,
-                    "Status": f"{status_icon} {p.status}",
-                    "📈 Progresso": f"{p.progresso:.0f}%",
-                    "👤 Responsável": p.responsavel_user.nome if p.responsavel_user else "-",
-                    "📅 Prazo": p.data_fim.strftime("%d/%m/%Y") if p.data_fim else "-",
-                })
-            st.dataframe(pd.DataFrame(data_proj), use_container_width=True, hide_index=True)
+                st.markdown(f"""
+                <div style="background:#161b27;border:1px solid #2a1a1a;border-left:4px solid {urg_col};
+                    border-radius:10px;padding:0.8rem 1rem;margin-bottom:0.5rem;
+                    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
+                    <div style="flex:1;min-width:200px;">
+                        <div style="font-size:0.85rem;font-weight:600;color:#e2f0ff;
+                            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:500px;">
+                            {p.nome}
+                        </div>
+                        <div style="font-size:0.73rem;color:#6a8aaa;margin-top:0.2rem;">
+                            👤 {resp_nome} &nbsp;·&nbsp; {n_tasks} tarefa(s) vencida(s)
+                        </div>
+                    </div>
+                    <div style="background:{urg_bg};border:1px solid {urg_col}33;
+                        border-radius:8px;padding:0.3rem 0.8rem;text-align:center;">
+                        <div style="font-size:1.1rem;font-weight:700;color:{urg_col};">{max_dias}d</div>
+                        <div style="font-size:0.63rem;color:{urg_col};opacity:0.8;">de atraso</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        # ── Tabela resumo por responsável ──────────────────────────────────────
+        st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+        _section_header("👥 Projetos por Responsável")
+
+        resp_map = {}
+        for p in all_projects:
+            resp = p.responsavel_user.nome if p.responsavel_user else "Sem responsável"
+            if resp not in resp_map:
+                resp_map[resp] = {"Ativo": 0, "Concluído": 0, "Planejamento": 0, "Cancelado": 0, "Total": 0}
+            resp_map[resp][p.status] = resp_map[resp].get(p.status, 0) + 1
+            resp_map[resp]["Total"] += 1
+
+        df_resp = pd.DataFrame([
+            {"Responsável": k, **v} for k, v in resp_map.items()
+        ]).sort_values("Total", ascending=False)
+
+        st.dataframe(
+            df_resp,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Responsável": st.column_config.TextColumn("👤 Responsável", width=220),
+                "Total": st.column_config.NumberColumn("Total", width=80),
+                "Ativo": st.column_config.NumberColumn("🟢 Ativos", width=90),
+                "Concluído": st.column_config.NumberColumn("✅ Concluídos", width=110),
+                "Planejamento": st.column_config.NumberColumn("🟡 Planej.", width=100),
+                "Cancelado": st.column_config.NumberColumn("❌ Cancelados", width=110),
+            }
+        )
 
     finally:
         db.close()
+
+
+def _kpi_card(col, value, label, bg, color, icon):
+    with col:
+        st.markdown(f"""
+        <div style="background:{bg};border:1.5px solid {color}44;border-radius:14px;
+            padding:1.1rem 1.2rem;min-height:90px;">
+            <div style="font-size:0.75rem;color:{color};font-weight:600;margin-bottom:0.4rem;">{icon} {label}</div>
+            <div style="font-size:2.2rem;font-weight:700;color:{color};line-height:1;">{value}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+def _section_header(title):
+    st.markdown(f"""
+    <div style="font-size:0.82rem;font-weight:700;color:#8aabcc;
+        text-transform:uppercase;letter-spacing:0.08em;
+        margin:0.2rem 0 0.8rem;padding-bottom:0.4rem;
+        border-bottom:1px solid #1e2d45;">
+        {title}
+    </div>
+    """, unsafe_allow_html=True)
