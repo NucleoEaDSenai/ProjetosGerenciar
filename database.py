@@ -31,7 +31,15 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode(), hashed.encode())
+    # Support sha256 fallback hashes (when bcrypt not available at seed time)
+    if hashed.startswith("sha256$"):
+        import hashlib
+        _, salt, h = hashed.split("$")
+        return hashlib.sha256((salt + password).encode()).hexdigest() == h
+    try:
+        return bcrypt.checkpw(password.encode(), hashed.encode())
+    except Exception:
+        return False
 
 
 def seed_data():
@@ -39,7 +47,7 @@ def seed_data():
     db = SessionLocal()
     try:
         if db.query(User).count() > 0:
-            return
+            return  # Already seeded (either demo or Petrobras import)
 
         # Create default users
         users = [
